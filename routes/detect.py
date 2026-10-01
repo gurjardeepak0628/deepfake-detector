@@ -8,7 +8,7 @@ import jwt, time, shutil, uuid
 import numpy as np
 import cv2
 import torch
-from transformers import ViTForImageClassification, ViTImageProcessor, AutoModelForImageClassification, AutoImageProcessor
+from transformers import ViTForImageClassification, ViTImageProcessor
 from PIL import Image, ImageChops, ImageEnhance
 import io
 
@@ -18,23 +18,13 @@ SECRET = os.getenv("JWT_SECRET", "deepguard_secret_key_2024")
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# -------- Load Model 1 --------
-print("⏳ Loading model 1/2 (dima806)...")
+# -------- Load Model (single model to save memory) --------
+print("⏳ Loading model (dima806)...")
 MODEL_1_NAME = "dima806/deepfake_vs_real_image_detection"
-model1 = ViTForImageClassification.from_pretrained(MODEL_1_NAME)
+model1 = ViTForImageClassification.from_pretrained(MODEL_1_NAME, low_cpu_mem_usage=True)
 processor1 = ViTImageProcessor.from_pretrained(MODEL_1_NAME)
 model1.eval()
-print("✅ Model 1 loaded!")
-
-# -------- Load Model 2 --------
-print("⏳ Loading model 2/2 (prithivMLmods)...")
-MODEL_2_NAME = "prithivMLmods/Deep-Fake-Detector-v2-Model"
-model2 = AutoModelForImageClassification.from_pretrained(MODEL_2_NAME)
-processor2 = AutoImageProcessor.from_pretrained(MODEL_2_NAME)
-model2.eval()
-print("✅ Model 2 loaded!")
-
-print("✅ Both deepfake detection models ready (ensemble mode)!")
+print("✅ Model loaded!")
 
 # -------- Face Detector (Haar Cascade, built into OpenCV) --------
 face_cascade = cv2.CascadeClassifier(
@@ -86,7 +76,7 @@ def ela_analysis(image_path: str, quality: int = 90) -> float:
     except Exception:
         return 0.0
 
-# -------- Single-model helpers --------
+# -------- Single-model helper --------
 def _run_model1(img: Image.Image) -> float:
     inputs = processor1(images=img, return_tensors="pt")
     with torch.no_grad():
@@ -100,26 +90,10 @@ def _run_model1(img: Image.Image) -> float:
             fake_prob = p
     return fake_prob
 
-def _run_model2(img: Image.Image) -> float:
-    inputs = processor2(images=img, return_tensors="pt")
-    with torch.no_grad():
-        outputs = model2(**inputs)
-        probs = torch.nn.functional.softmax(outputs.logits, dim=1).squeeze().tolist()
-    id2label = model2.config.id2label
-    label_probs = {id2label[i]: probs[i] for i in range(len(probs))}
-    fake_prob = 0
-    for label, p in label_probs.items():
-        if "fake" in label.lower() or "deepfake" in label.lower():
-            fake_prob = p
-    return fake_prob
-
 def ensemble_fake_prob(img: Image.Image) -> float:
-    """Weighted average — Model1 trusted more, Model2 less (reduces its false-positive bias)."""
-    p1 = _run_model1(img)
-    p2 = _run_model2(img)
-    combined = (0.65 * p1) + (0.35 * p2)
-    print(f"🔍 Model1={p1:.3f}  Model2={p2:.3f}  Weighted={combined:.3f}")
-    return combined
+    fake_prob = _run_model1(img)
+    print(f"🔍 Model={fake_prob:.3f}")
+    return fake_prob
 
 def vit_detection(image_path: str) -> dict:
     """
@@ -187,7 +161,7 @@ def analyze_image(image_path: str) -> dict:
     detection_time = round(time.time() - start, 2)
     return {"prediction": prediction, "confidence": confidence, "detection_time": detection_time, "reason": reason}
 
-# -------- Video Analysis (face-aware, ensemble, multi-frame voting) --------
+# -------- Video Analysis (face-aware, multi-frame voting) --------
 def analyze_video(video_path: str) -> dict:
     start = time.time()
     try:
