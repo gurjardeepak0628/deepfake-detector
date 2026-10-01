@@ -5,6 +5,7 @@ import bcrypt
 import jwt
 import os
 from datetime import datetime, timedelta
+import psycopg2.extras
 
 router = APIRouter()
 SECRET = os.getenv("JWT_SECRET", "deepguard_secret_key_2024")
@@ -30,7 +31,7 @@ def make_token(user_id: int, name: str, email: str):
 @router.post("/register")
 def register(body: RegisterRequest):
     conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cursor.execute("SELECT id FROM users WHERE email = %s", (body.email,))
         if cursor.fetchone():
@@ -38,11 +39,11 @@ def register(body: RegisterRequest):
 
         hashed = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode()
         cursor.execute(
-            "INSERT INTO users (name, email, password) VALUES (%s, %s, %s)",
+            "INSERT INTO users (name, email, password) VALUES (%s, %s, %s) RETURNING id",
             (body.name, body.email, hashed)
         )
+        user_id = cursor.fetchone()["id"]
         conn.commit()
-        user_id = cursor.lastrowid
         token = make_token(user_id, body.name, body.email)
         return {
             "token": token,
@@ -55,7 +56,7 @@ def register(body: RegisterRequest):
 @router.post("/login")
 def login(body: LoginRequest):
     conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cursor.execute("SELECT * FROM users WHERE email = %s", (body.email,))
         user = cursor.fetchone()

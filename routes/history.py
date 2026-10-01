@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from database import get_connection
 import jwt, os
+import psycopg2.extras
 
 router = APIRouter()
 security = HTTPBearer()
@@ -16,7 +17,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
 @router.get("/history")
 def get_history(user=Depends(get_current_user)):
     conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cursor.execute(
             """SELECT id, filename, file_type, prediction, confidence, detection_time, created_at
@@ -27,7 +28,6 @@ def get_history(user=Depends(get_current_user)):
             (user["user_id"],)
         )
         records = cursor.fetchall()
-        # Convert datetime to string for JSON
         for r in records:
             r["created_at"] = str(r["created_at"])
         return records

@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from database import get_connection
 import jwt, os
+import psycopg2.extras
 
 router = APIRouter()
 security = HTTPBearer()
@@ -23,7 +24,7 @@ def get_admin_user(credentials: HTTPAuthorizationCredentials = Depends(security)
 @router.get("/stats")
 def get_stats(admin=Depends(get_admin_user)):
     conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cursor.execute("SELECT COUNT(*) as total FROM users")
         total_users = cursor.fetchone()["total"]
@@ -47,7 +48,7 @@ def get_stats(admin=Depends(get_admin_user)):
 @router.get("/users")
 def get_all_users(admin=Depends(get_admin_user)):
     conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cursor.execute("""
             SELECT u.id, u.name, u.email, u.created_at,
@@ -72,7 +73,7 @@ def get_all_users(admin=Depends(get_admin_user)):
 @router.get("/detections")
 def get_all_detections(admin=Depends(get_admin_user)):
     conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cursor.execute("""
             SELECT d.id, u.name, u.email, d.filename, d.file_type,
